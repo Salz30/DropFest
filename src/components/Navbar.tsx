@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { Menu, X, Zap } from 'lucide-react'
+import { Menu, X, Zap, LayoutDashboard, LogOut } from 'lucide-react'
+import { useAuth } from '../context/AuthContext'
 
 const navLinks = [
   { label: 'Drops', to: '/drops' },
@@ -12,6 +13,7 @@ export default function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [scrolled, setScrolled] = useState(false)
   const location = useLocation()
+  const { user, brand, signOut } = useAuth()
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 10)
@@ -71,14 +73,43 @@ export default function Navbar() {
           ))}
         </div>
 
-        {/* Desktop CTA */}
+        {/* Desktop CTA / Auth State */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }} className="hidden-mobile">
-          <Link to="/auth" className="btn-ghost" style={{ height: 40, padding: '0 16px' }}>
-            Masuk
-          </Link>
-          <Link to="/auth?mode=register" className="btn-navy" style={{ height: 40, padding: '0 20px', fontSize: 14, textDecoration: 'none' }}>
-            Daftarkan Brand
-          </Link>
+          {user ? (
+            <>
+              <Link
+                to="/dashboard"
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  height: 40, padding: '0 16px', borderRadius: 999,
+                  background: '#29165E', color: '#FFFFFF',
+                  fontSize: 13, fontWeight: 600, textDecoration: 'none',
+                }}
+              >
+                <LayoutDashboard size={14} /> Dashboard ({brand?.name || 'Brand'})
+              </Link>
+              <button
+                onClick={() => signOut()}
+                style={{
+                  height: 40, padding: '0 12px', background: 'none',
+                  border: 'none', color: '#666666', cursor: 'pointer',
+                  fontSize: 13, display: 'flex', alignItems: 'center', gap: 4,
+                }}
+                title="Keluar"
+              >
+                <LogOut size={14} />
+              </button>
+            </>
+          ) : (
+            <>
+              <Link to="/auth" className="btn-ghost" style={{ height: 40, padding: '0 16px' }}>
+                Masuk
+              </Link>
+              <Link to="/auth?mode=register" className="btn-navy" style={{ height: 40, padding: '0 20px', fontSize: 14, textDecoration: 'none' }}>
+                Daftarkan Brand
+              </Link>
+            </>
+          )}
         </div>
 
         {/* Mobile Hamburger */}
@@ -116,13 +147,34 @@ export default function Navbar() {
                 {link.label}
               </Link>
             ))}
+
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
-              <Link to="/auth" style={{ textAlign: 'center', padding: '12px', color: '#29165E', textDecoration: 'none', fontSize: 14, border: '1px solid #D9D9D9', borderRadius: 999 }}>
-                Masuk
-              </Link>
-              <Link to="/auth?mode=register" className="btn-navy" style={{ textAlign: 'center', padding: '12px', textDecoration: 'none', fontSize: 14 }}>
-                Daftarkan Brand
-              </Link>
+              {user ? (
+                <>
+                  <Link to="/dashboard" className="btn-navy" style={{ textAlign: 'center', padding: '12px', textDecoration: 'none', fontSize: 14 }}>
+                    📊 Buka Dashboard Brand ({brand?.name || 'Brand'})
+                  </Link>
+                  <button
+                    onClick={() => signOut()}
+                    style={{
+                      textAlign: 'center', padding: '10px', color: '#D32F2F',
+                      background: 'none', border: '1px solid #D9D9D9', borderRadius: 999,
+                      fontSize: 13, cursor: 'pointer',
+                    }}
+                  >
+                    Keluar Akun
+                  </button>
+                </>
+              ) : (
+                <>
+                  <Link to="/auth" style={{ textAlign: 'center', padding: '12px', color: '#29165E', textDecoration: 'none', fontSize: 14, border: '1px solid #D9D9D9', borderRadius: 999 }}>
+                    Masuk
+                  </Link>
+                  <Link to="/auth?mode=register" className="btn-navy" style={{ textAlign: 'center', padding: '12px', textDecoration: 'none', fontSize: 14 }}>
+                    Daftarkan Brand
+                  </Link>
+                </>
+              )}
             </div>
           </div>
         </div>

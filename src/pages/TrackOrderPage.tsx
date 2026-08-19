@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useSearchParams, Link } from 'react-router-dom'
 import {
   PackageCheck, Clock, AlertCircle, CheckCircle2,
-  Upload, X
+  Upload, X, Zap
 } from 'lucide-react'
 import { supabase, callRpc } from '../lib/supabase'
 import type { OrderStatus, PaymentProofStatus } from '../types'
@@ -30,6 +30,24 @@ interface TrackOrderData {
     uploaded_at: string
   } | null
 }
+
+const demoOrders = [
+  {
+    label: '🟡 Menunggu Verifikasi (Raka)',
+    id: '44444444-0000-0000-0000-000000000001',
+    email: 'raka@example.com',
+  },
+  {
+    label: '🟢 Pembayaran Lunas (Sari)',
+    id: '44444444-0000-0000-0000-000000000002',
+    email: 'sari@example.com',
+  },
+  {
+    label: '🟠 Belum Bayar (Dimas)',
+    id: '44444444-0000-0000-0000-000000000003',
+    email: 'dimas@example.com',
+  },
+]
 
 function formatRupiah(amount: number): string {
   return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(amount)
@@ -62,9 +80,8 @@ export default function TrackOrderPage() {
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
 
-  const handleLookup = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault()
-    if (!orderId.trim() || !email.trim()) {
+  const performLookup = async (idToSearch: string, emailToSearch: string) => {
+    if (!idToSearch.trim() || !emailToSearch.trim()) {
       setError('Harap masukkan Order ID dan Email yang digunakan saat memesan.')
       return
     }
@@ -75,8 +92,8 @@ export default function TrackOrderPage() {
 
     try {
       const { data, error: rpcError } = await callRpc('get_order_by_id_and_email', {
-        p_order_id: orderId.trim(),
-        p_email: email.trim(),
+        p_order_id: idToSearch.trim(),
+        p_email: emailToSearch.trim(),
       })
 
       if (rpcError) {
@@ -98,12 +115,27 @@ export default function TrackOrderPage() {
     }
   }
 
+  const handleLookup = (e?: React.FormEvent) => {
+    if (e) e.preventDefault()
+    performLookup(orderId, email)
+  }
+
   // Auto lookup if query params provided
   useEffect(() => {
-    if (searchParams.get('id') && searchParams.get('email')) {
-      handleLookup()
+    const qId = searchParams.get('id')
+    const qEmail = searchParams.get('email')
+    if (qId && qEmail) {
+      setOrderId(qId)
+      setEmail(qEmail)
+      performLookup(qId, qEmail)
     }
   }, [searchParams])
+
+  const handleSelectDemoOrder = (demo: typeof demoOrders[0]) => {
+    setOrderId(demo.id)
+    setEmail(demo.email)
+    performLookup(demo.id, demo.email)
+  }
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -172,7 +204,7 @@ export default function TrackOrderPage() {
         const res = data as any
         if (res.success) {
           setShowUploadModal(false)
-          handleLookup()
+          performLookup(orderData.order_id, email)
         } else {
           setUploadError(res.message || 'Gagal mengirim bukti pembayaran.')
         }
@@ -189,7 +221,7 @@ export default function TrackOrderPage() {
       <div className="container-main" style={{ maxWidth: 760 }}>
 
         {/* ── HEADER ────────────────────────────────────────── */}
-        <div style={{ textAlign: 'center', marginBottom: 32 }}>
+        <div style={{ textAlign: 'center', marginBottom: 28 }}>
           <span style={{
             display: 'inline-flex', alignItems: 'center', gap: 6,
             background: '#E7E3FF', color: '#29165E',
@@ -203,6 +235,33 @@ export default function TrackOrderPage() {
           <p style={{ fontSize: 14, color: '#666666', maxWidth: 460, margin: '0 auto' }}>
             Masukkan Order ID dan Email yang kamu gunakan saat checkout untuk melihat status atau mengunggah bukti pembayaran.
           </p>
+        </div>
+
+        {/* ── QUICK DEMO PRESETS BAR ─────────────────────────── */}
+        <div style={{
+          background: '#F0F3FF', border: '1px solid #E7E3FF', borderRadius: 8,
+          padding: '12px 16px', marginBottom: 20,
+        }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: '#5E4C92', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 5, marginBottom: 8 }}>
+            <Zap size={13} fill="#5E4C92" /> 1-Click Coba Pesanan Demo:
+          </span>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {demoOrders.map(d => (
+              <button
+                key={d.id}
+                type="button"
+                onClick={() => handleSelectDemoOrder(d)}
+                style={{
+                  background: '#FFFFFF', border: '1px solid #D9D9D9',
+                  borderRadius: 999, padding: '5px 12px',
+                  fontSize: 11, fontWeight: 600, color: '#29165E',
+                  cursor: 'pointer',
+                }}
+              >
+                {d.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* ── LOOKUP FORM ───────────────────────────────────── */}
