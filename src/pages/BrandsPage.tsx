@@ -129,12 +129,22 @@ export default function BrandsPage() {
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
                     <div style={{
-                      width: 52, height: 52, borderRadius: 10,
-                      background: '#29165E', color: '#FFFFFF',
+                      width: 54, height: 54, borderRadius: 10,
+                      background: '#0F0926', color: '#FFFFFF',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: 22, fontWeight: 900,
+                      fontSize: 22, fontWeight: 900, overflow: 'hidden',
+                      border: '1px solid #E2E8F0', flexShrink: 0,
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
                     }}>
-                      {brand.name.charAt(0)}
+                      {brand.logo_url || (brand.slug === 'void-division' ? '/void_logo.jpg' : null) ? (
+                        <img
+                          src={brand.logo_url || (brand.slug === 'void-division' ? '/void_logo.jpg' : '')}
+                          alt={brand.name}
+                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        />
+                      ) : (
+                        brand.name.charAt(0)
+                      )}
                     </div>
                     {brand.active_drops > 0 && (
                       <span style={{
@@ -168,10 +178,10 @@ export default function BrandsPage() {
                     Total: <strong>{brand.total_drops} Rilisan</strong>
                   </span>
                   <Link
-                    to={`/drops?search=${encodeURIComponent(brand.name)}`}
+                    to={`/brands/${brand.slug}`}
                     style={{ fontSize: 12, fontWeight: 700, color: '#29165E', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4 }}
                   >
-                    Lihat Drop <ArrowRight size={13} />
+                    Lihat Profil <ArrowRight size={13} />
                   </Link>
                 </div>
               </div>

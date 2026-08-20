@@ -1,9 +1,12 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import './index.css'
 import { AuthProvider } from './context/AuthContext'
+import { ToastProvider } from './context/ToastContext'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import Navbar from './components/Navbar'
 import Footer from './components/Footer'
+import ScrollToTop from './components/ScrollToTop'
+import Toast from './components/Toast'
 import DemoToolbar from './components/DemoToolbar'
 import LandingPage from './pages/LandingPage'
 import HomePage from './pages/HomePage'
@@ -11,56 +14,64 @@ import DropsPage from './pages/DropsPage'
 import DropDetailPage from './pages/DropDetailPage'
 import TrackOrderPage from './pages/TrackOrderPage'
 import BrandsPage from './pages/BrandsPage'
+import BrandProfilePage from './pages/BrandProfilePage'
 import AuthPage from './pages/AuthPage'
 import DashboardPage from './pages/DashboardPage'
 
 function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
-        <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-          <Navbar />
-          <main style={{ flex: 1 }}>
-            <Routes>
-              {/* Landing page (Marketing) */}
-              <Route path="/" element={<LandingPage />} />
+      <ToastProvider>
+        <BrowserRouter>
+          <ScrollToTop />
+          <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+            <Navbar />
+            <main style={{ flex: 1 }}>
+              <Routes>
+                {/* Landing page (Marketing) */}
+                <Route path="/" element={<LandingPage />} />
 
-              {/* Homepage (Showcase & Live Drops) */}
-              <Route path="/home" element={<HomePage />} />
+                {/* Homepage (Showcase & Live Drops) */}
+                <Route path="/home" element={<HomePage />} />
 
-              {/* Drops Catalog & Detail */}
-              <Route path="/drops" element={<DropsPage />} />
-              <Route path="/drops/:id" element={<DropDetailPage />} />
+                {/* Drops Catalog & Detail */}
+                <Route path="/drops" element={<DropsPage />} />
+                <Route path="/drops/:id" element={<DropDetailPage />} />
 
-              {/* Brands Catalog */}
-              <Route path="/brands" element={<BrandsPage />} />
+                {/* Brands Catalog & Profile */}
+                <Route path="/brands" element={<BrandsPage />} />
+                <Route path="/brands/:slug" element={<BrandProfilePage />} />
 
-              {/* Track My Order & Upload Payment */}
-              <Route path="/track-order" element={<TrackOrderPage />} />
+                {/* Track My Order & Upload Payment */}
+                <Route path="/track-order" element={<TrackOrderPage />} />
 
-              {/* Brand Auth (Login & Register) */}
-              <Route path="/auth" element={<AuthPage />} />
+                {/* Brand Auth (Login & Register) */}
+                <Route path="/auth" element={<AuthPage />} />
 
-              {/* Brand Owner Dashboard (Protected Route) */}
-              <Route
-                path="/dashboard"
-                element={
-                  <ProtectedRoute>
-                    <DashboardPage />
-                  </ProtectedRoute>
-                }
-              />
+                {/* Brand Owner Dashboard (Protected Route) */}
+                <Route
+                  path="/dashboard"
+                  element={
+                    <ProtectedRoute>
+                      <DashboardPage />
+                    </ProtectedRoute>
+                  }
+                />
 
-              {/* 404 Route */}
-              <Route path="*" element={<NotFoundPage />} />
-            </Routes>
-          </main>
-          <Footer />
+                {/* 404 Route */}
+                <Route path="*" element={<NotFoundPage />} />
+              </Routes>
+            </main>
+            <Footer />
 
-          {/* Floating Demo Assistant */}
-          <DemoToolbar />
-        </div>
-      </BrowserRouter>
+            {/* Floating Demo Assistant */}
+            <DemoToolbar />
+          </div>
+
+          {/* Toast Notification Container */}
+          <Toast />
+        </BrowserRouter>
+      </ToastProvider>
     </AuthProvider>
   )
 }

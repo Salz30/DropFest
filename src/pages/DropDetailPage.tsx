@@ -293,17 +293,25 @@ export default function DropDetailPage() {
               display: 'flex', alignItems: 'center', gap: 16,
             }}>
               <div style={{
-                width: 48, height: 48, borderRadius: 8, background: '#29165E',
+                width: 48, height: 48, borderRadius: 8, background: '#0F0926',
                 color: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 18, fontWeight: 900,
+                fontSize: 18, fontWeight: 900, overflow: 'hidden', border: '1px solid #E2E8F0', flexShrink: 0,
               }}>
-                {drop.brand?.name?.charAt(0) || 'B'}
+                {drop.brand?.logo_url || (drop.brand?.slug === 'void-division' ? '/void_logo.jpg' : null) ? (
+                  <img
+                    src={drop.brand.logo_url || (drop.brand.slug === 'void-division' ? '/void_logo.jpg' : '')}
+                    alt={drop.brand.name}
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  />
+                ) : (
+                  drop.brand?.name?.charAt(0) || 'B'
+                )}
               </div>
               <div style={{ flex: 1 }}>
                 <h4 style={{ fontSize: 15, fontWeight: 700, color: '#29165E', marginBottom: 2 }}>{drop.brand?.name}</h4>
                 <p style={{ fontSize: 12, color: '#666666' }}>{drop.brand?.instagram || 'Brand Indie Terverifikasi'}</p>
               </div>
-              <Link to="/brands" style={{ fontSize: 12, color: '#29165E', fontWeight: 600, textDecoration: 'none' }}>
+              <Link to={drop.brand?.slug ? `/brands/${drop.brand.slug}` : '/brands'} style={{ fontSize: 12, color: '#29165E', fontWeight: 600, textDecoration: 'none' }}>
                 Profil Brand →
               </Link>
             </div>

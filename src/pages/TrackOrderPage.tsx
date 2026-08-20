@@ -169,23 +169,36 @@ export default function TrackOrderPage() {
       let finalFileUrl = ''
 
       if (file) {
-        // Upload to Supabase Storage
-        const fileExt = file.name.split('.').pop()
+        // First try upload to Supabase Storage
+        const fileExt = file.name.split('.').pop() || 'jpg'
         const fileName = `${orderData.order_id}_${Date.now()}.${fileExt}`
         const filePath = `receipts/${fileName}`
 
-        const { error: storageError } = await supabase.storage
-          .from('payment-proofs')
-          .upload(filePath, file, { upsert: true })
-
-        if (storageError) {
-          finalFileUrl = `https://placehold.co/600x800/29165E/FFFFFF/png?text=Bukti+Transfer+${encodeURIComponent(senderName)}`
-        } else {
-          const { data: publicUrlData } = supabase.storage
+        try {
+          const { error: storageError } = await supabase.storage
             .from('payment-proofs')
-            .getPublicUrl(filePath)
-          finalFileUrl = publicUrlData.publicUrl
+            .upload(filePath, file, { upsert: true })
+
+          if (!storageError) {
+            const { data: publicUrlData } = supabase.storage
+              .from('payment-proofs')
+              .getPublicUrl(filePath)
+            finalFileUrl = publicUrlData.publicUrl
+          }
+        } catch {
+          // ignore, use fallback below
         }
+
+        // Fallback: If storage upload failed or returned no URL, use Base64 Data URL so the photo is NEVER lost
+        if (!finalFileUrl) {
+          finalFileUrl = await new Promise<string>((resolve) => {
+            const reader = new FileReader()
+            reader.onloadend = () => resolve(reader.result as string)
+            reader.readAsDataURL(file)
+          })
+        }
+      } else if (previewUrl) {
+        finalFileUrl = previewUrl
       }
 
       // Submit via RPC
@@ -193,8 +206,8 @@ export default function TrackOrderPage() {
         p_order_id: orderData.order_id,
         p_slot_token: orderData.slot_token,
         p_file_url: finalFileUrl,
-        p_sender_name: senderName,
-        p_bank_name: bankName,
+        p_sender_name: senderName.trim(),
+        p_bank_name: bankName.trim(),
         p_amount: transferAmount,
       })
 

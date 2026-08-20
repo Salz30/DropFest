@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react'
 import type { User, Session } from '@supabase/supabase-js'
-import { supabase } from '../lib/supabase'
+import { supabase, callRpc } from '../lib/supabase'
 import type { Brand, BrandOwner } from '../types'
 
 interface SignUpBrandData {
@@ -21,7 +21,7 @@ interface AuthContextType {
   loading: boolean
   signIn: (email: string, password: string) => Promise<{ success: boolean; error?: string }>
   signUpBrand: (data: SignUpBrandData) => Promise<{ success: boolean; error?: string }>
-  loginOrProvisionDemo: (email: string, _password: string, brandSlug: string, brandName: string) => Promise<{ success: boolean; error?: string }>
+  loginOrProvisionDemo: (email: string, password: string, brandSlug: string, brandName: string) => Promise<{ success: boolean; error?: string }>
   signOut: () => Promise<void>
   refreshBrandData: () => Promise<void>
 }
@@ -29,6 +29,9 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 const DEMO_STORAGE_KEY = 'dropfest_demo_brand_slug'
+
+// Demo brand IDs (dari seed data di schema.sql)
+const DEMO_BRAND_SLUGS = ['void-division', 'bumi-records', 'silo-coffee']
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null)
@@ -73,9 +76,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const refreshBrandData = async () => {
     if (isDemoMode && brand) {
+      // Refresh demo brand data langsung dari tabel publik
       const { data } = await supabase.from('brands').select('*').eq('id', brand.id).single()
       if (data) setBrand(data as Brand)
-    } else if (user) {
+    } else if (user && !isDemoMode) {
       await fetchBrandForUser(user.id)
     }
   }
@@ -83,7 +87,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     // 1. Check if demo session exists in localStorage
     const savedDemoSlug = localStorage.getItem(DEMO_STORAGE_KEY)
-    if (savedDemoSlug) {
+    if (savedDemoSlug && DEMO_BRAND_SLUGS.includes(savedDemoSlug)) {
       const loadDemo = async () => {
         try {
           const { data } = await supabase
@@ -97,7 +101,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setBrand(demoBrand)
             setUser({
               id: 'demo-user-' + demoBrand.id,
-              email: `owner@${demoBrand.slug}.com`,
+              email: `owner@${demoBrand.slug}.demo`,
               app_metadata: {},
               user_metadata: { name: demoBrand.name },
               aud: 'authenticated',
@@ -126,7 +130,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (_event, newSession) => {
-        if (localStorage.getItem(DEMO_STORAGE_KEY)) return
+        if (localStorage.getItem(DEMO_STORAGE_KEY)) return // Skip if in demo mode
         setSession(newSession)
         setUser(newSession?.user ?? null)
         if (newSession?.user) {
@@ -146,6 +150,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signIn = async (email: string, password: string) => {
     try {
+      // Exit demo mode if active
       localStorage.removeItem(DEMO_STORAGE_KEY)
       setIsDemoMode(false)
 
@@ -167,12 +172,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }
 
+  /**
+   * signUpBrand — Secure brand registration using register_brand RPC.
+   */
   const signUpBrand = async (data: SignUpBrandData) => {
     try {
       localStorage.removeItem(DEMO_STORAGE_KEY)
       setIsDemoMode(false)
 
-      const { data: authData, error: authError } = await supabase.auth.signUp({
+      // 1. Create auth account
+      const { error: authError } = await supabase.auth.signUp({
         email: data.email.trim(),
         password: data.password,
       })
@@ -181,23 +190,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return { success: false, error: authError.message }
       }
 
-      if (!authData.user) {
-        return { success: false, error: 'Pendaftaran gagal dibuat.' }
+      // 2. Sign in immediately
+      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+        email: data.email.trim(),
+        password: data.password,
+      })
+
+      if (signInError || !signInData.user) {
+        return { success: false, error: 'Akun terdaftar tapi gagal login otomatis. Coba login manual.' }
       }
 
-      const userId = authData.user.id
-      const cleanSlug = data.slug.trim().toLowerCase().replace(/[^a-z0-9-]/g, '-')
+      // 3. Call register_brand RPC (atomic & secure)
+      const { data: rpcResult, error: rpcError } = await callRpc('register_brand', {
+        p_brand_name: data.brandName.trim(),
+        p_slug: data.slug.trim(),
+        p_description: data.description?.trim() || null,
+        p_instagram: data.instagram?.trim() || null,
+      })
 
-      const { data: existingBrand } = await supabase
-        .from('brands')
-        .select('*')
-        .eq('slug', cleanSlug)
-        .maybeSingle()
+      if (rpcError) {
+        // Fallback: jika RPC belum di-install, coba direct insert (untuk backward compat)
+        const cleanSlug = data.slug.trim().toLowerCase().replace(/[^a-z0-9-]/g, '-')
 
-      let brandId = existingBrand?.id
-
-      if (!brandId) {
-        const { data: newBrand, error: brandInsertError } = await supabase
+        const { data: newBrand, error: brandErr } = await supabase
           .from('brands')
           .insert({
             name: data.brandName.trim(),
@@ -208,25 +223,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           .select()
           .single()
 
-        if (brandInsertError) {
-          return { success: false, error: `Gagal membuat profil brand: ${brandInsertError.message}` }
+        if (brandErr) {
+          return { success: false, error: `Gagal membuat brand: ${brandErr.message}` }
         }
-        brandId = (newBrand as Brand).id
-      }
 
-      const { error: ownerInsertError } = await supabase
-        .from('brand_owners')
-        .insert({
-          user_id: userId,
-          brand_id: brandId,
+        await supabase.from('brand_owners').insert({
+          user_id: signInData.user.id,
+          brand_id: (newBrand as Brand).id,
           role: 'owner',
         })
 
-      if (ownerInsertError) {
-        return { success: false, error: `Gagal menghubungkan akun owner: ${ownerInsertError.message}` }
+        await fetchBrandForUser(signInData.user.id)
+        return { success: true }
       }
 
-      await fetchBrandForUser(userId)
+      const res = rpcResult as { success: boolean; message?: string }
+      if (!res.success) {
+        return { success: false, error: res.message || 'Gagal mendaftarkan brand.' }
+      }
+
+      await fetchBrandForUser(signInData.user.id)
       return { success: true }
     } catch {
       return { success: false, error: 'Terjadi kesalahan saat pendaftaran brand.' }
@@ -234,11 +250,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }
 
   /**
-   * 1-Click Instant Demo Login:
-   * Bypasses Supabase Auth SMTP / email rate limit by querying the demo brand record directly from database
+   * loginOrProvisionDemo — 1-Click Instant Demo Login
+   * 
+   * Bypass Supabase Auth sepenuhnya untuk demo mode.
+   * Langsung mengambil data brand dari database (public SELECT) dan
+   * membuat sesi lokal di React state + localStorage.
+   * 
+   * Ini HANYA untuk demo/staging — bukan untuk production.
+   * Data dashboard di-fetch menggunakan public queries + SECURITY DEFINER RPCs.
    */
-  const loginOrProvisionDemo = async (email: string, _password: string, brandSlug: string, _brandName: string) => {
+  const loginOrProvisionDemo = async (_email: string, _password: string, brandSlug: string, _brandName: string) => {
     try {
+      // Validasi hanya demo brand yang diperbolehkan
+      if (!DEMO_BRAND_SLUGS.includes(brandSlug)) {
+        return { success: false, error: 'Brand ini tidak tersedia untuk mode demo.' }
+      }
+
+      // Ambil data brand langsung dari tabel publik (tidak perlu auth)
       const { data, error } = await supabase
         .from('brands')
         .select('*')
@@ -246,14 +274,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .maybeSingle()
 
       if (error || !data) {
-        return { success: false, error: 'Brand demo belum ditemukan di database.' }
+        return { success: false, error: 'Brand demo tidak ditemukan di database. Pastikan seed data sudah di-run.' }
       }
 
       const demoBrand = data as Brand
+
+      // Set local demo session
       setBrand(demoBrand)
       setUser({
         id: 'demo-user-' + demoBrand.id,
-        email: email,
+        email: `owner@${demoBrand.slug}.demo`,
         app_metadata: {},
         user_metadata: { name: demoBrand.name },
         aud: 'authenticated',
@@ -269,13 +299,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }
 
   const signOut = async () => {
+    const wasDemoMode = isDemoMode
     localStorage.removeItem(DEMO_STORAGE_KEY)
     setIsDemoMode(false)
-    await supabase.auth.signOut()
-    setUser(null)
-    setSession(null)
     setBrand(null)
     setBrandOwner(null)
+    setUser(null)
+    setSession(null)
+
+    // Hanya panggil Supabase signOut jika bukan demo mode
+    if (!wasDemoMode) {
+      await supabase.auth.signOut()
+    }
   }
 
   return (
