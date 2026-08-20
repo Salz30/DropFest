@@ -35,3 +35,4 @@ dist-ssr
 .eslintcache
 # Markdown files
 *.md
+!README.md
