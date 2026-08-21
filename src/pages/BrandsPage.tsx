@@ -54,7 +54,9 @@ export default function BrandsPage() {
   const filteredBrands = brands.filter(b => {
     if (!search.trim()) return true
     const q = search.toLowerCase()
-    return b.name.toLowerCase().includes(q) || (b.description && b.description.toLowerCase().includes(q))
+    return b.name.toLowerCase().includes(q) ||
+      (b.description && b.description.toLowerCase().includes(q)) ||
+      (b.category && b.category.toLowerCase().includes(q))
   })
 
   const gridCols = isMobile ? '1fr' : isTabletDown ? '1fr 1fr' : 'repeat(3, 1fr)'
@@ -158,12 +160,23 @@ export default function BrandsPage() {
                     )}
                   </div>
 
-                  <h3 style={{ fontSize: 18, fontWeight: 800, color: '#29165E', marginBottom: 4 }}>
-                    {brand.name}
-                  </h3>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4, flexWrap: 'wrap', gap: 6 }}>
+                    <h3 style={{ fontSize: 18, fontWeight: 800, color: '#29165E', margin: 0 }}>
+                      {brand.name}
+                    </h3>
+                    {brand.category && (
+                      <span style={{
+                        fontSize: 10, fontWeight: 700, color: '#5E4C92',
+                        background: '#F0F3FF', padding: '2px 8px', borderRadius: 999,
+                        border: '1px solid #E0E7FF',
+                      }}>
+                        {brand.category}
+                      </span>
+                    )}
+                  </div>
 
                   {brand.instagram && (
-                    <p style={{ fontSize: 12, color: '#5E4C92', fontWeight: 600, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <p style={{ fontSize: 12, color: '#5E4C92', fontWeight: 600, margin: '4px 0 10px', display: 'flex', alignItems: 'center', gap: 4 }}>
                       <Instagram size={13} /> {brand.instagram}
                     </p>
                   )}

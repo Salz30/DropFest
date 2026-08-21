@@ -85,6 +85,7 @@ export default function DashboardPage() {
     name: '',
     description: '',
     instagram: '',
+    category: '',
     logo_url: '',
     banner_url: '',
   })
@@ -119,6 +120,7 @@ export default function DashboardPage() {
       name: brandEditForm.name.trim(),
       description: brandEditForm.description?.trim() || null,
       instagram: brandEditForm.instagram?.trim() || null,
+      category: brandEditForm.category?.trim() || null,
       logo_url: brandEditForm.logo_url || null,
       banner_url: brandEditForm.banner_url || null,
     }
@@ -138,7 +140,7 @@ export default function DashboardPage() {
       setTimeout(() => {
         setShowBrandEditModal(false)
         setBrandEditMessage(null)
-      }, 1000)
+      }, 800)
     } catch (err: any) {
       setBrandEditMessage({ type: 'error', text: err.message || 'Gagal memperbarui profil brand.' })
     } finally {
@@ -633,6 +635,7 @@ export default function DashboardPage() {
                   name: brand?.name || '',
                   description: brand?.description || '',
                   instagram: brand?.instagram || '',
+                  category: brand?.category || '',
                   logo_url: brand?.logo_url || '',
                   banner_url: brand?.banner_url || '',
                 })
@@ -1798,6 +1801,18 @@ export default function DashboardPage() {
                   placeholder="@brandkamu"
                   value={brandEditForm.instagram}
                   onChange={e => setBrandEditForm({ ...brandEditForm, instagram: e.target.value })}
+                />
+              </div>
+
+              {/* Category / Niche */}
+              <div style={{ marginBottom: 14 }}>
+                <label className="input-label">Kategori / Niche Brand</label>
+                <input
+                  type="text"
+                  className="input-field"
+                  placeholder="Contoh: Streetwear & Apparel, Vinyl Records, Artisan Coffee"
+                  value={brandEditForm.category}
+                  onChange={e => setBrandEditForm({ ...brandEditForm, category: e.target.value })}
                 />
               </div>
 

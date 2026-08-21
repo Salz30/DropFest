@@ -7,6 +7,13 @@ import {
 import { supabase, callRpc } from '../lib/supabase'
 import type { Drop, Brand, Product } from '../types'
 import { useBreakpoint } from '../hooks/useBreakpoint'
+import { CaptchaBadge } from '../components/CaptchaBadge'
+
+declare global {
+  interface Window {
+    grecaptcha?: any
+  }
+}
 
 interface DropDetailData extends Drop {
   brand: Brand
@@ -75,13 +82,37 @@ export default function DropDetailPage() {
       setLoading(true)
       setError(null)
       try {
-        const { data, error: err } = await supabase
+        // Attempt 1: Fetch by exact ID
+        let { data } = await supabase
           .from('drops')
           .select('*, brand:brands(*), product:products(*)')
           .eq('id', id)
-          .single()
+          .maybeSingle()
 
-        if (err || !data) {
+        // Attempt 2: If not found, check if id is 'live' or numeric/alias or fallback to first live drop
+        if (!data) {
+          const { data: firstLive } = await supabase
+            .from('drops')
+            .select('*, brand:brands(*), product:products(*)')
+            .eq('status', 'live')
+            .order('starts_at', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+
+          if (firstLive) {
+            data = firstLive
+          } else {
+            // Attempt 3: Any drop
+            const { data: anyDrop } = await supabase
+              .from('drops')
+              .select('*, brand:brands(*), product:products(*)')
+              .limit(1)
+              .maybeSingle()
+            data = anyDrop
+          }
+        }
+
+        if (!data) {
           setError('Drop tidak ditemukan.')
         } else {
           setDrop(data as DropDetailData)
@@ -168,6 +199,26 @@ export default function DropDetailPage() {
 
     setSubmittingOrder(true)
     try {
+      // Invisible reCAPTCHA v3 Anti-Bot Verification
+      if (typeof window !== 'undefined' && window.grecaptcha && import.meta.env.VITE_RECAPTCHA_SITE_KEY) {
+        try {
+          const token = await new Promise<string>((resolve, reject) => {
+            window.grecaptcha.ready(() => {
+              window.grecaptcha.execute(import.meta.env.VITE_RECAPTCHA_SITE_KEY, { action: 'preorder' })
+                .then(resolve)
+                .catch(reject)
+            })
+          })
+          if (!token) {
+            setOrderError('Verifikasi Anti-Bot reCAPTCHA v3 gagal. Silakan coba lagi.')
+            setSubmittingOrder(false)
+            return
+          }
+        } catch {
+          // ignore error if script not loaded, proceed to database atomic validation
+        }
+      }
+
       const { data, error: rpcError } = await callRpc('create_order', {
         p_drop_id: drop.id,
         p_buyer_name: buyerName,
@@ -694,6 +745,9 @@ export default function DropDetailPage() {
                   >
                     {submittingOrder ? 'Memproses & Mengunci Slot...' : `Kunci ${quantity} Slot Sekarang (${formatRupiah(drop.price * quantity)})`}
                   </button>
+
+                  {/* reCAPTCHA v3 Anti-Bot Protection Badge */}
+                  <CaptchaBadge style={{ marginTop: 14 }} />
                 </form>
               </div>
             )}

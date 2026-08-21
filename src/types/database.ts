@@ -132,6 +132,7 @@ export interface Brand {
   logo_url: string | null
   banner_url: string | null
   instagram: string | null
+  category?: string | null
   created_at: string
 }
 
@@ -143,6 +144,7 @@ export interface BrandInsert {
   logo_url?: string | null
   banner_url?: string | null
   instagram?: string | null
+  category?: string | null
   created_at?: string
 }
 

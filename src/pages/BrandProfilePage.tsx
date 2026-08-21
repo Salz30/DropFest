@@ -45,6 +45,7 @@ export default function BrandProfilePage() {
     name: '',
     description: '',
     instagram: '',
+    category: '',
     logo_url: '',
     banner_url: '',
   })
@@ -77,6 +78,7 @@ export default function BrandProfilePage() {
         name: b.name || '',
         description: b.description || '',
         instagram: b.instagram || '',
+        category: b.category || '',
         logo_url: b.logo_url || (b.slug === 'void-division' ? '/void_logo.jpg' : ''),
         banner_url: b.banner_url || (b.slug === 'void-division' ? '/void_banner.jpg' : ''),
       })
@@ -113,6 +115,7 @@ export default function BrandProfilePage() {
       name: editForm.name.trim(),
       description: editForm.description?.trim() || null,
       instagram: editForm.instagram?.trim() || null,
+      category: editForm.category?.trim() || null,
       logo_url: editForm.logo_url || null,
       banner_url: editForm.banner_url || null,
     }
@@ -125,6 +128,7 @@ export default function BrandProfilePage() {
 
       if (updateError) throw updateError
 
+      setBrand(prev => prev ? ({ ...prev, ...payload }) : null)
       setEditMessage({ type: 'success', text: 'Profil brand berhasil diperbarui!' })
       await refreshBrandData()
       await fetchBrandProfile()
@@ -132,7 +136,7 @@ export default function BrandProfilePage() {
       setTimeout(() => {
         setShowEditModal(false)
         setEditMessage(null)
-      }, 1000)
+      }, 800)
     } catch (err: any) {
       setEditMessage({ type: 'error', text: err.message || 'Gagal memperbarui profil brand.' })
     } finally {
@@ -305,6 +309,15 @@ export default function BrandProfilePage() {
                   }}>
                     <Sparkles size={10} /> Official
                   </span>
+                  {brand.category && (
+                    <span style={{
+                      display: 'inline-flex', alignItems: 'center',
+                      background: '#F1F5F9', color: '#475569',
+                      fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 999,
+                    }}>
+                      {brand.category}
+                    </span>
+                  )}
                 </div>
 
                 {brand.instagram && (
@@ -703,6 +716,18 @@ export default function BrandProfilePage() {
                   placeholder="@brandkamu"
                   value={editForm.instagram}
                   onChange={e => setEditForm({ ...editForm, instagram: e.target.value })}
+                />
+              </div>
+
+              {/* Category / Niche */}
+              <div style={{ marginBottom: 14 }}>
+                <label className="input-label">Kategori / Niche Brand</label>
+                <input
+                  type="text"
+                  className="input-field"
+                  placeholder="Contoh: Streetwear & Apparel, Vinyl Records, Artisan Coffee"
+                  value={editForm.category}
+                  onChange={e => setEditForm({ ...editForm, category: e.target.value })}
                 />
               </div>
 

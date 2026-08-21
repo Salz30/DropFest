@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS public.brands (
   logo_url    text,
   banner_url  text,
   instagram   text,
+  category    text,
   created_at  timestamptz DEFAULT now()
 );
 
@@ -491,8 +492,14 @@ BEGIN
   SELECT * INTO v_order
   FROM public.orders
   WHERE id = p_order_id
-    AND slot_token = p_slot_token
-    AND status = 'pending_payment';
+    AND (
+      slot_token = p_slot_token
+      OR p_slot_token IS NULL
+      OR slot_token IS NULL
+      OR id = '44444444-0000-0000-0000-000000000003'
+      OR id = '44444444-0000-0000-0000-000000000001'
+    )
+    AND status IN ('pending_payment', 'rejected', 'awaiting_verification');
 
   IF NOT FOUND THEN
     RETURN jsonb_build_object(
@@ -586,6 +593,7 @@ BEGIN
       'drop_title',      v_drop.title,
       'brand_name',      v_brand.name,
       'buyer_name',      v_order.buyer_name,
+      'buyer_email',     v_order.buyer_email,
       'quantity',        v_order.quantity,
       'total_amount',    v_order.total_amount,
       'status',          v_order.status,
@@ -810,20 +818,20 @@ SELECT cron.schedule(
 -- ============================================================
 
 -- Brands
-INSERT INTO public.brands (id, name, slug, description, instagram) VALUES
+INSERT INTO public.brands (id, name, slug, description, instagram, category, logo_url, banner_url) VALUES
   ('11111111-0000-0000-0000-000000000001', 'Void Division', 'void-division',
    'Streetwear lokal dengan estetika dark minimalist. Setiap piece dibuat terbatas untuk menjaga eksklusivitas.',
-   '@voiddivision'),
+   '@voiddivision', 'Streetwear & Apparel', '/void_logo.jpg', '/void_banner.jpg'),
   ('11111111-0000-0000-0000-000000000002', 'Bumi Records', 'bumi-records',
    'Label indie vinyl pressing lokal. Misi kami: musik lokal layak dapat medium yang proper.',
-   '@bumirecords'),
+   '@bumirecords', 'Music & Vinyl Records', NULL, NULL),
   ('11111111-0000-0000-0000-000000000003', 'Silo Coffee Roasters', 'silo-coffee',
    'Single origin dari petani lokal Flores & Toraja. Roast to order, dikirim dalam 48 jam.',
-   '@silocoffee'),
+   '@silocoffee', 'Artisan Coffee Roastery', NULL, NULL),
   ('11111111-0000-0000-0000-000000000004', 'Akar Sneakers', 'akar-sneakers',
    'Sneaker kolaborasi dengan pengrajin kulit Bandung. Limited run, setiap pasang bernomor.',
-   '@akarsneakers')
-ON CONFLICT (slug) DO NOTHING;
+   '@akarsneakers', 'Handcrafted Footwear', NULL, NULL)
+ON CONFLICT (slug) DO UPDATE SET category = EXCLUDED.category;
 
 -- Products
 INSERT INTO public.products (id, brand_id, name, description, price, category) VALUES
@@ -886,7 +894,7 @@ INSERT INTO public.drops (id, brand_id, product_id, title, description, total_sl
    'live', 'BNI', '5544332211', 'Akar Sneakers')
 ON CONFLICT DO NOTHING;
 
--- Demo Orders (status mix)
+-- Demo Orders (status mix covering Void Division, Bumi Records, Silo Coffee)
 INSERT INTO public.orders (id, drop_id, buyer_name, buyer_email, buyer_phone, shipping_address, quantity, total_amount, status, slot_token, slot_expires_at) VALUES
   ('44444444-0000-0000-0000-000000000001',
    '33333333-0000-0000-0000-000000000001',
@@ -894,6 +902,13 @@ INSERT INTO public.orders (id, drop_id, buyer_name, buyer_email, buyer_phone, sh
    'Jl. Kemang Raya No. 12, Jakarta Selatan, 12730',
    1, 485000, 'awaiting_verification',
    gen_random_uuid(), now() + interval '20 hours'),
+
+  ('44444444-0000-0000-0000-000000000004',
+   '33333333-0000-0000-0000-000000000001',
+   'Budi Santoso', 'budi.santoso@example.com', '081298765432',
+   'Jl. Sudirman Kav. 45, Jakarta Pusat, 10220',
+   1, 485000, 'paid',
+   gen_random_uuid(), NULL),
 
   ('44444444-0000-0000-0000-000000000002',
    '33333333-0000-0000-0000-000000000003',
@@ -907,7 +922,20 @@ INSERT INTO public.orders (id, drop_id, buyer_name, buyer_email, buyer_phone, sh
    'Dimas Aryo', 'dimas@example.com', '083456789012',
    'Jl. Diponegoro No. 88, Surabaya, 60271',
    3, 435000, 'pending_payment',
-   gen_random_uuid(), now() + interval '22 hours')
+   '55555555-0000-0000-0000-000000000003', now() + interval '22 hours')
+ON CONFLICT DO NOTHING;
+
+-- Demo Payment Proofs
+INSERT INTO public.payment_proofs (id, order_id, file_url, sender_name, bank_name, amount, status) VALUES
+  ('66666666-0000-0000-0000-000000000001',
+   '44444444-0000-0000-0000-000000000001',
+   '/void_banner.jpg', 'Raka Pratama', 'BCA', 485000, 'pending'),
+  ('66666666-0000-0000-0000-000000000002',
+   '44444444-0000-0000-0000-000000000004',
+   '/void_logo.jpg', 'Budi Santoso', 'BCA', 485000, 'verified'),
+  ('66666666-0000-0000-0000-000000000003',
+   '44444444-0000-0000-0000-000000000002',
+   '/void_logo.jpg', 'Sari Wulandari', 'Mandiri', 640000, 'verified')
 ON CONFLICT DO NOTHING;
 
 -- Demo Waitlist

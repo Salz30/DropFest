@@ -29,12 +29,12 @@ export default function Navbar() {
     return location.pathname === to
   }
 
-  // --- Brand Owner Nav Links ---
+  // --- Brand Owner Nav Links (Single Clean Dashboard Entry) ---
   const ownerNavLinks = [
     { label: 'Dashboard', to: '/dashboard', icon: LayoutDashboard },
-    ...(brand?.slug ? [{ label: 'Profil Brand Publik', to: `/brands/${brand.slug}`, icon: Store }] : []),
-    { label: 'Semua Drops', to: '/drops', icon: Flame },
+    { label: 'Drops', to: '/drops', icon: Flame },
     { label: 'Katalog Brand', to: '/brands', icon: Building2 },
+    { label: 'Cek Pesanan', to: '/track-order', icon: Package },
   ]
 
   // --- Customer / Guest Nav Links ---
@@ -192,26 +192,27 @@ export default function Navbar() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }} className="hidden-mobile">
             {user ? (
               /* --- Brand Owner Actions --- */
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Link
-                  to="/dashboard"
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 6,
-                    height: 36, padding: '0 14px', borderRadius: 999,
-                    background: location.pathname === '/dashboard' ? '#1A0F3D' : '#29165E',
-                    color: '#FFFFFF',
-                    fontSize: 13, fontWeight: 700, textDecoration: 'none',
-                    boxShadow: '0 2px 6px rgba(41,22,94,0.2)',
-                    transition: 'background 0.15s ease',
-                  }}
-                >
-                  <LayoutDashboard size={14} /> Buka Dashboard
-                </Link>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                {brand?.slug && (
+                  <Link
+                    to={`/brands/${brand.slug}`}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 6,
+                      height: 36, padding: '0 14px', borderRadius: 999,
+                      background: '#F5F6F7', border: '1px solid #E2E8F0',
+                      color: '#29165E', fontSize: 12, fontWeight: 700, textDecoration: 'none',
+                    }}
+                    title="Lihat profil publik brand"
+                  >
+                    <Store size={13} />
+                    <span>Profil Publik</span>
+                  </Link>
+                )}
 
                 <button
                   onClick={() => signOut()}
                   style={{
-                    height: 36, padding: '0 12px', background: '#FFF1F2',
+                    height: 36, padding: '0 14px', background: '#FFF1F2',
                     border: '1px solid #FECDD3', borderRadius: 999,
                     color: '#E11D48', cursor: 'pointer',
                     display: 'flex', alignItems: 'center', gap: 6,
@@ -351,27 +352,29 @@ export default function Navbar() {
               <div style={{ borderTop: '1px solid #F1F5F9', marginTop: 12, paddingTop: 12 }}>
                 {user ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    <Link
-                      to="/dashboard"
-                      className="btn-navy"
-                      style={{
-                        textAlign: 'center', padding: '12px', textDecoration: 'none',
-                        fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center',
-                        justifyContent: 'center', gap: 6,
-                      }}
-                    >
-                      <LayoutDashboard size={15} /> Buka Dashboard {brand?.name}
-                    </Link>
+                    {brand?.slug && (
+                      <Link
+                        to={`/brands/${brand.slug}`}
+                        style={{
+                          textAlign: 'center', padding: '10px 14px', textDecoration: 'none',
+                          fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center',
+                          justifyContent: 'center', gap: 6, background: '#F5F6F7',
+                          border: '1px solid #E2E8F0', borderRadius: 8, color: '#29165E',
+                        }}
+                      >
+                        <Store size={15} /> Lihat Profil Publik ({brand.name})
+                      </Link>
+                    )}
                     <button
                       onClick={() => signOut()}
                       style={{
                         textAlign: 'center', padding: '10px', color: '#E11D48',
-                        background: '#FFF1F2', border: '1px solid #FECDD3', borderRadius: 999,
-                        fontSize: 13, fontWeight: 600, cursor: 'pointer', display: 'flex',
-                        alignItems: 'center', justifyContent: 'center', gap: 6,
+                        background: '#FFF1F2', border: '1px solid #FECDD3', borderRadius: 8,
+                        fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                       }}
                     >
-                      <LogOut size={14} /> Keluar (Kembali ke Customer)
+                      <LogOut size={15} /> Keluar dari Akun Owner
                     </button>
                   </div>
                 ) : (
