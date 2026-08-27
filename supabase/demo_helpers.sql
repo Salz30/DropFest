@@ -229,6 +229,16 @@ BEGIN
     RETURN jsonb_build_object('success', true, 'message', 'Produk berhasil diperbarui!');
 
   ELSIF p_action = 'delete' THEN
+    IF EXISTS (
+      SELECT 1 FROM public.drops
+      WHERE product_id = p_product_id AND brand_id = p_brand_id
+    ) THEN
+      RETURN jsonb_build_object(
+        'success', false,
+        'message', 'Produk tidak dapat dihapus karena masih digunakan oleh drop. Hapus drop tersebut terlebih dahulu.'
+      );
+    END IF;
+
     DELETE FROM public.products WHERE id = p_product_id AND brand_id = p_brand_id;
     RETURN jsonb_build_object('success', true, 'message', 'Produk berhasil dihapus!');
   END IF;

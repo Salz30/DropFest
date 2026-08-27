@@ -146,7 +146,74 @@ BEGIN
 END;
 $$;
 
--- 4. Update data demo brand kategori & slot token
+-- 4. Update RPC get_latest_order_by_email (bantu pembeli yang lupa Order ID)
+CREATE OR REPLACE FUNCTION public.get_latest_order_by_email(
+  p_email text
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+STABLE
+AS $$
+DECLARE
+  v_order  public.orders%ROWTYPE;
+  v_drop   public.drops%ROWTYPE;
+  v_brand  public.brands%ROWTYPE;
+  v_proof  public.payment_proofs%ROWTYPE;
+BEGIN
+  SELECT * INTO v_order
+  FROM public.orders
+  WHERE buyer_email = lower(trim(p_email))
+  ORDER BY 
+    CASE WHEN status IN ('pending_payment', 'awaiting_verification') THEN 0 ELSE 1 END,
+    created_at DESC
+  LIMIT 1;
+
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object(
+      'success', false,
+      'message', 'Tidak ada pesanan yang ditemukan untuk email ini.'
+    );
+  END IF;
+
+  SELECT * INTO v_drop  FROM public.drops  WHERE id = v_order.drop_id;
+  SELECT * INTO v_brand FROM public.brands WHERE id = v_drop.brand_id;
+  SELECT * INTO v_proof FROM public.payment_proofs WHERE order_id = v_order.id
+    ORDER BY uploaded_at DESC LIMIT 1;
+
+  RETURN jsonb_build_object(
+    'success', true,
+    'data', jsonb_build_object(
+      'order_id',        v_order.id,
+      'drop_id',         v_order.drop_id,
+      'drop_title',      v_drop.title,
+      'brand_name',      v_brand.name,
+      'buyer_name',      v_order.buyer_name,
+      'buyer_email',     v_order.buyer_email,
+      'quantity',        v_order.quantity,
+      'total_amount',    v_order.total_amount,
+      'status',          v_order.status,
+      'slot_token',      v_order.slot_token,
+      'slot_expires_at', v_order.slot_expires_at,
+      'created_at',      v_order.created_at,
+      'payment_proof',   CASE WHEN v_proof.id IS NOT NULL THEN
+        jsonb_build_object(
+          'file_url',         v_proof.file_url,
+          'sender_name',      v_proof.sender_name,
+          'bank_name',        v_proof.bank_name,
+          'amount',           v_proof.amount,
+          'status',           v_proof.status,
+          'rejection_reason', v_proof.rejection_reason,
+          'uploaded_at',      v_proof.uploaded_at
+        )
+        ELSE NULL
+      END
+    )
+  );
+END;
+$$;
+
+-- 5. Update data demo brand kategori & slot token
 UPDATE public.brands SET category = 'Streetwear & Apparel', logo_url = '/void_logo.jpg', banner_url = '/void_banner.jpg' WHERE slug = 'void-division';
 UPDATE public.brands SET category = 'Music & Vinyl Records' WHERE slug = 'bumi-records';
 UPDATE public.brands SET category = 'Artisan Coffee Roastery' WHERE slug = 'silo-coffee';

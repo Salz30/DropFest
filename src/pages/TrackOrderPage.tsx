@@ -175,6 +175,19 @@ export default function TrackOrderPage() {
   const [error, setError] = useState<string | null>(null)
   const [orderData, setOrderData] = useState<TrackOrderData | null>(null)
   const [copiedId, setCopiedId] = useState(false)
+  const [savedOrders, setSavedOrders] = useState<any[]>([])
+
+  // Load guest order history from localStorage
+  useEffect(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem('dropfest_guest_orders') || '[]')
+      if (Array.isArray(stored)) {
+        setSavedOrders(stored)
+      }
+    } catch {
+      // ignore
+    }
+  }, [])
 
   // Upload Modal State
   const [showUploadModal, setShowUploadModal] = useState(false)
@@ -196,8 +209,8 @@ export default function TrackOrderPage() {
     const cleanId = idToSearch.trim()
     const cleanEmail = emailToSearch.trim().toLowerCase()
 
-    if (!cleanId || !cleanEmail) {
-      setError('Harap masukkan Order ID dan Email yang digunakan saat memesan.')
+    if (!cleanEmail) {
+      setError('Harap masukkan alamat Email yang digunakan saat memesan.')
       return
     }
 
@@ -207,32 +220,52 @@ export default function TrackOrderPage() {
 
     let foundOrder: TrackOrderData | null = null
 
-    // Attempt 1: Call SECURITY DEFINER RPC (bypasses RLS for unauthenticated guest customers like Zion)
-    try {
-      const { data: rpcData, error: rpcErr } = await callRpc('get_order_by_id_and_email', {
-        p_order_id: cleanId,
-        p_email: cleanEmail,
-      })
+    // Attempt 1: Call SECURITY DEFINER RPC
+    if (cleanId) {
+      try {
+        const { data: rpcData, error: rpcErr } = await callRpc('get_order_by_id_and_email', {
+          p_order_id: cleanId,
+          p_email: cleanEmail,
+        })
 
-      if (!rpcErr && rpcData && typeof rpcData === 'object' && rpcData.success && rpcData.data) {
-        foundOrder = {
-          ...rpcData.data,
-          buyer_email: rpcData.data.buyer_email || cleanEmail
-        } as TrackOrderData
+        if (!rpcErr && rpcData && typeof rpcData === 'object' && rpcData.success && rpcData.data) {
+          foundOrder = {
+            ...rpcData.data,
+            buyer_email: rpcData.data.buyer_email || cleanEmail
+          } as TrackOrderData
+        }
+      } catch {
+        // ignore, fall through
       }
-    } catch {
-      // ignore, fall through
+    } else {
+      // A device-local history is safe to use; a public email-only lookup is not.
+      const savedOrder = savedOrders.find(saved => saved.email?.toLowerCase() === cleanEmail)
+      if (savedOrder?.order_id) {
+        setOrderId(savedOrder.order_id)
+        setLoading(false)
+        return performLookup(savedOrder.order_id, cleanEmail)
+      }
+
+      setError('Untuk melindungi privasi, masukkan Order ID. Periksa email konfirmasi atau gunakan perangkat yang dipakai saat checkout.')
+      setLoading(false)
+      return
     }
 
-    // Attempt 2: Direct DB query (works when logged in as Brand Owner or if RPC fails)
-    if (!foundOrder) {
+    // Only a signed-in brand owner can use the RLS-protected dashboard fallback.
+    if (!foundOrder && user && brand) {
       try {
-        const { data: directOrder } = await supabase
+        let query = supabase
           .from('orders')
           .select('*, drop:drops(*, brand:brands(*))')
-          .eq('id', cleanId)
           .ilike('buyer_email', cleanEmail)
-          .maybeSingle()
+
+        if (cleanId) {
+          query = query.eq('id', cleanId)
+        } else {
+          query = query.order('created_at', { ascending: false }).limit(1)
+        }
+
+        const { data: directOrder } = await query.maybeSingle()
 
         if (directOrder) {
           const dropInfo = (directOrder as any).drop || {}
@@ -241,7 +274,7 @@ export default function TrackOrderPage() {
           const { data: proof } = await supabase
             .from('payment_proofs')
             .select('*')
-            .eq('order_id', cleanId)
+            .eq('order_id', directOrder.id)
             .order('uploaded_at', { ascending: false })
             .maybeSingle()
 
@@ -268,21 +301,46 @@ export default function TrackOrderPage() {
               uploaded_at: proof.uploaded_at,
             } : null
           }
+          setOrderId(directOrder.id)
         }
       } catch {
         // ignore
       }
     }
 
-    // Attempt 3: DEMO_FIXTURES fallback (for demo preset chips)
+    // Demo fallback is only available after a complete ID + email lookup.
     if (!foundOrder && DEMO_FIXTURES[cleanEmail]) {
       foundOrder = DEMO_FIXTURES[cleanEmail]
+      setOrderId(foundOrder.order_id)
     }
 
     if (foundOrder) {
       setOrderData(foundOrder)
       setTransferAmount(foundOrder.total_amount)
       setSenderName(foundOrder.buyer_name)
+
+      // Save to localStorage history
+      try {
+        const stored = JSON.parse(localStorage.getItem('dropfest_guest_orders') || '[]')
+        const updated = [
+          {
+            order_id: foundOrder.order_id,
+            email: cleanEmail,
+            buyer_name: foundOrder.buyer_name,
+            drop_id: foundOrder.drop_id,
+            drop_title: foundOrder.drop_title,
+            brand_name: foundOrder.brand_name,
+            total_amount: foundOrder.total_amount,
+            status: foundOrder.status,
+            created_at: foundOrder.created_at
+          },
+          ...stored.filter((s: any) => s.order_id !== foundOrder.order_id)
+        ].slice(0, 10)
+        localStorage.setItem('dropfest_guest_orders', JSON.stringify(updated))
+        setSavedOrders(updated)
+      } catch {
+        // ignore
+      }
     } else {
       setError('Order tidak ditemukan. Periksa kembali Order ID dan email yang kamu gunakan saat memesan.')
     }
@@ -512,10 +570,12 @@ export default function TrackOrderPage() {
               alignItems: 'end',
             }}>
               <div>
-                <label className="input-label">Order ID</label>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <label className="input-label">Order ID</label>
+                  <span style={{ fontSize: 11, color: '#64748B' }}>Wajib (kecuali tersimpan di perangkat ini)</span>
+                </div>
                 <input
                   type="text"
-                  required
                   placeholder="Contoh: 44444444-0000-..."
                   value={orderId}
                   onChange={e => setOrderId(e.target.value)}
@@ -546,6 +606,9 @@ export default function TrackOrderPage() {
                 {loading ? 'Mencari...' : 'Lacak'}
               </button>
             </div>
+            <p style={{ fontSize: 11, color: '#64748B', marginTop: 8, marginBottom: 0 }}>
+              💡 <em>Lupa Order ID? Periksa email konfirmasi. Pesanan pada perangkat ini juga akan ditemukan otomatis setelah email diisi.</em>
+            </p>
           </form>
 
           {error && (
@@ -555,6 +618,49 @@ export default function TrackOrderPage() {
             }}>
               <AlertCircle size={16} style={{ flexShrink: 0 }} />
               <span>{error}</span>
+            </div>
+          )}
+
+          {/* ── SAVED GUEST ORDERS ON THIS DEVICE ── */}
+          {savedOrders.length > 0 && !orderData && (
+            <div style={{ marginTop: 24, paddingTop: 20, borderTop: '1px dashed #E2E8F0' }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: '#29165E', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12 }}>
+                <Clock size={14} color="#5E4C92" /> Pesanan Terakhir di Perangkat Ini:
+              </span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {savedOrders.slice(0, 3).map((s, idx) => (
+                  <div
+                    key={s.order_id || idx}
+                    onClick={() => {
+                      setOrderId(s.order_id)
+                      setEmail(s.email)
+                      performLookup(s.order_id, s.email)
+                    }}
+                    style={{
+                      background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 6,
+                      padding: '10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      cursor: 'pointer', transition: 'background 0.2s', gap: 12, flexWrap: 'wrap'
+                    }}
+                    onMouseEnter={e => (e.currentTarget.style.background = '#F1F5F9')}
+                    onMouseLeave={e => (e.currentTarget.style.background = '#F8FAFC')}
+                  >
+                    <div>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: '#29165E', display: 'block' }}>
+                        {s.drop_title || 'Exclusive Drop Item'}
+                      </span>
+                      <span style={{ fontSize: 11, color: '#64748B' }}>
+                        {s.email} • <code style={{ fontSize: 10 }}>{s.order_id.slice(0, 18)}...</code>
+                      </span>
+                    </div>
+                    <span style={{
+                      fontSize: 11, fontWeight: 700, color: '#5E4C92', background: '#EDE9FE',
+                      padding: '4px 10px', borderRadius: 999,
+                    }}>
+                      Lacak 1-Klik →
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>

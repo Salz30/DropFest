@@ -60,6 +60,8 @@ export default function DropDetailPage() {
   const [shippingAddress, setShippingAddress] = useState('')
   const [submittingOrder, setSubmittingOrder] = useState(false)
   const [orderError, setOrderError] = useState<string | null>(null)
+  const [existingActiveOrderId, setExistingActiveOrderId] = useState<string | null>(null)
+  const [cancellingOrder, setCancellingOrder] = useState(false)
   const [orderSuccessData, setOrderSuccessData] = useState<{
     order_id: string
     slot_token: string
@@ -77,9 +79,9 @@ export default function DropDetailPage() {
 
   // Fetch Drop Data
   useEffect(() => {
-    async function fetchDrop() {
+    async function fetchDrop(showLoading = false) {
       if (!id) return
-      setLoading(true)
+      if (showLoading) setLoading(true)
       setError(null)
       try {
         // Attempt 1: Fetch by exact ID
@@ -120,18 +122,46 @@ export default function DropDetailPage() {
       } catch {
         setError('Gagal memuat data drop.')
       } finally {
-        setLoading(false)
+        if (showLoading) setLoading(false)
       }
     }
-    fetchDrop()
+
+    fetchDrop(true)
+
+    const syncInterval = setInterval(() => {
+      fetchDrop(false)
+    }, 10000)
+
+    const channel = supabase
+      .channel(`drop-detail-sync-${id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'drops', filter: `id=eq.${id}` }, () => {
+        fetchDrop(false)
+      })
+      .subscribe()
+
+    const handleFocus = () => fetchDrop(false)
+    window.addEventListener('focus', handleFocus)
+
+    return () => {
+      clearInterval(syncInterval)
+      window.removeEventListener('focus', handleFocus)
+      supabase.removeChannel(channel)
+    }
   }, [id])
 
   // Timer Tick
   useEffect(() => {
     if (!drop) return
     const updateTimer = () => {
+      const computed = getComputedStatus(drop)
       const now = Date.now()
-      const targetTime = drop.status === 'scheduled'
+
+      if (computed === 'ended') {
+        setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0 })
+        return
+      }
+
+      const targetTime = computed === 'scheduled'
         ? new Date(drop.starts_at).getTime()
         : drop.ends_at
           ? new Date(drop.ends_at).getTime()
@@ -239,16 +269,67 @@ export default function DropDetailPage() {
             total_amount: res.total_amount,
             slot_expires_at: res.slot_expires_at,
           })
+          setExistingActiveOrderId(null)
           // update local reserved count
           setDrop(prev => prev ? { ...prev, reserved_count: prev.reserved_count + quantity } : null)
+
+          // Save guest order to localStorage so buyer has a local history on this device
+          try {
+            const history = JSON.parse(localStorage.getItem('dropfest_guest_orders') || '[]')
+            const updated = [
+              {
+                order_id: res.order_id,
+                email: buyerEmail.trim().toLowerCase(),
+                buyer_name: buyerName.trim(),
+                drop_id: drop.id,
+                drop_title: drop.title,
+                brand_name: drop.brand?.name || 'Indie Brand',
+                total_amount: res.total_amount,
+                status: 'pending_payment',
+                created_at: new Date().toISOString()
+              },
+              ...history.filter((h: any) => h.order_id !== res.order_id)
+            ].slice(0, 10)
+            localStorage.setItem('dropfest_guest_orders', JSON.stringify(updated))
+          } catch {
+            // ignore
+          }
         } else {
-          setOrderError(res.message || 'Gagal membuat pesanan.')
+          if (res.existing_order_id) {
+            setExistingActiveOrderId(res.existing_order_id)
+            setOrderError(null)
+          } else {
+            setOrderError(res.message || 'Gagal membuat pesanan.')
+          }
         }
       }
     } catch {
       setOrderError('Koneksi terputus. Silakan coba lagi.')
     } finally {
       setSubmittingOrder(false)
+    }
+  }
+
+  const handleCancelExistingOrder = async () => {
+    if (!existingActiveOrderId) return
+    setCancellingOrder(true)
+    try {
+      const { data, error } = await callRpc('cancel_pending_order', {
+        p_order_id: existingActiveOrderId,
+        p_email: buyerEmail.trim().toLowerCase(),
+      })
+
+      if (error) throw error
+      if (!data || typeof data !== 'object' || !(data as { success?: boolean }).success) {
+        throw new Error((data as { message?: string } | null)?.message || 'Pesanan gagal dibatalkan.')
+      }
+
+      setExistingActiveOrderId(null)
+      setOrderError('Pesanan lama berhasil dibatalkan. Silakan klik tombol Kunci Slot untuk membuat pesanan baru.')
+    } catch {
+      setOrderError('Gagal membatalkan pesanan lama. Coba lagi.')
+    } finally {
+      setCancellingOrder(false)
     }
   }
 
@@ -628,6 +709,66 @@ export default function DropDetailPage() {
                 <p style={{ fontSize: 13, color: '#666666', marginBottom: 20 }}>
                   Kunci slot pesananmu sekarang. Tanpa perlu registrasi akun.
                 </p>
+
+                {/* Existing Active Order Found Alert */}
+                {existingActiveOrderId && (
+                  <div style={{
+                    padding: 16, background: '#FEF3C7', border: '1px solid #FCD34D',
+                    borderRadius: 8, marginBottom: 18, fontSize: 13,
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#B45309', fontWeight: 700, marginBottom: 6 }}>
+                      <AlertCircle size={18} />
+                      <span>Pesanan Aktif Belum Selesai Ditemukan!</span>
+                    </div>
+                    <p style={{ color: '#78350F', fontSize: 12, margin: '0 0 10px', lineHeight: '18px' }}>
+                      Email <strong>{buyerEmail}</strong> sudah memiliki pesanan yang belum dibayar untuk drop ini:
+                    </p>
+                    <div style={{
+                      background: '#FFFFFF', padding: '8px 12px', borderRadius: 6,
+                      border: '1px solid #FDE68A', marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap'
+                    }}>
+                      <div>
+                        <span style={{ fontSize: 10, color: '#64748B', display: 'block', fontWeight: 600 }}>ORDER ID:</span>
+                        <code style={{ fontSize: 12, fontWeight: 700, color: '#29165E', wordBreak: 'break-all' }}>{existingActiveOrderId}</code>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => copyToClipboard(existingActiveOrderId)}
+                        style={{
+                          background: '#F0F3FF', border: '1px solid #E0E7FF', borderRadius: 4,
+                          padding: '4px 8px', fontSize: 11, color: '#29165E', cursor: 'pointer', fontWeight: 600,
+                        }}
+                      >
+                        {copiedOrderId ? 'Tersalin' : 'Salin'}
+                      </button>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      <Link
+                        to={`/track-order?id=${existingActiveOrderId}&email=${encodeURIComponent(buyerEmail.trim())}`}
+                        className="btn-navy"
+                        style={{
+                          flex: 1, height: 38, fontSize: 12, fontWeight: 700,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                          textDecoration: 'none', minWidth: 170,
+                        }}
+                      >
+                        👉 Lanjutkan & Upload Bukti Bayar
+                      </Link>
+                      <button
+                        type="button"
+                        disabled={cancellingOrder}
+                        onClick={handleCancelExistingOrder}
+                        style={{
+                          background: '#FFFFFF', border: '1px solid #D97706', color: '#B45309',
+                          borderRadius: 6, padding: '0 12px', height: 38, fontSize: 12, fontWeight: 600,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {cancellingOrder ? 'Membatalkan...' : 'Batal & Buat Baru'}
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 {orderError && (
                   <div style={{

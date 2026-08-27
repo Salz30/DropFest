@@ -22,23 +22,34 @@ function getComputedStatus(drop: Drop): 'scheduled' | 'live' | 'ended' {
 }
 
 function formatTimeLeft(endsAt: string | null): string {
-  if (!endsAt) return 'Tanpa batas'
+  if (!endsAt) return 'Tanpa batas waktu'
   const diff = new Date(endsAt).getTime() - Date.now()
   if (diff <= 0) return 'Berakhir'
   const days = Math.floor(diff / 86400000)
   const hours = Math.floor((diff % 86400000) / 3600000)
-  if (days > 0) return `${days}h ${hours}j lagi`
   const mins = Math.floor((diff % 3600000) / 60000)
-  return `${hours}j ${mins}m lagi`
+  if (days > 0) {
+    return hours > 0 ? `${days} hari ${hours} jam lagi` : `${days} hari lagi`
+  }
+  if (hours > 0) {
+    return mins > 0 ? `${hours} jam ${mins} mnt lagi` : `${hours} jam lagi`
+  }
+  return `${Math.max(1, mins)} menit lagi`
 }
 
 function formatCountdown(startsAt: string): string {
   const diff = new Date(startsAt).getTime() - Date.now()
-  if (diff <= 0) return 'Segera rilis'
+  if (diff <= 0) return 'Rilis Sekarang'
   const days = Math.floor(diff / 86400000)
   const hours = Math.floor((diff % 86400000) / 3600000)
-  if (days > 0) return `${days}h ${hours}j lagi`
-  return `${hours}j lagi`
+  const mins = Math.floor((diff % 3600000) / 60000)
+  if (days > 0) {
+    return hours > 0 ? `${days} hari ${hours} jam lagi` : `${days} hari lagi`
+  }
+  if (hours > 0) {
+    return mins > 0 ? `${hours} jam ${mins} mnt lagi` : `${hours} jam lagi`
+  }
+  return `${Math.max(1, mins)} menit lagi`
 }
 
 function formatRupiah(amount: number): string {
@@ -67,12 +78,12 @@ function StatusBadge({ status }: { status: string }) {
 
 function SlotBar({ reserved, total }: { reserved: number; total: number }) {
   const pct = Math.min((reserved / total) * 100, 100)
-  const left = total - reserved
+  const left = Math.max(0, total - reserved)
   const color = pct >= 90 ? '#D32F2F' : pct >= 60 ? '#B45309' : '#15803D'
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-        <span style={{ fontSize: 11, color: '#666666' }}>{left} slot tersisa</span>
+        <span style={{ fontSize: 11, color: '#666666', fontWeight: 600 }}>{left} slot tersisa</span>
         <span style={{ fontSize: 11, color: '#666666' }}>{reserved}/{total}</span>
       </div>
       <div style={{ height: 4, background: '#F3F4F6', borderRadius: 999, overflow: 'hidden' }}>
@@ -95,24 +106,53 @@ export default function DropsPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<FilterStatus>(initialStatus)
   const [sortBy, setSortBy] = useState<'newest' | 'price_low' | 'price_high'>('newest')
+  const [, setTick] = useState(0)
+
+  const fetchDrops = async (showLoading = false) => {
+    if (showLoading) setLoading(true)
+    try {
+      const { data, error } = await supabase
+        .from('drops')
+        .select('*, brand:brands(*)')
+        .order('starts_at', { ascending: false })
+
+      if (!error && data) {
+        setDrops(data as DropWithBrand[])
+      }
+    } finally {
+      if (showLoading) setLoading(false)
+    }
+  }
 
   useEffect(() => {
-    async function fetchDrops() {
-      setLoading(true)
-      try {
-        const { data, error } = await supabase
-          .from('drops')
-          .select('*, brand:brands(*)')
-          .order('starts_at', { ascending: false })
+    fetchDrops(true)
 
-        if (!error && data) {
-          setDrops(data as DropWithBrand[])
-        }
-      } finally {
-        setLoading(false)
-      }
+    // Live clock ticker every 5 seconds for smooth countdown sync
+    const clockInterval = setInterval(() => {
+      setTick(t => t + 1)
+    }, 5000)
+
+    // Polling remains a fallback when Realtime is unavailable.
+    const syncInterval = setInterval(() => {
+      fetchDrops(false)
+    }, 15000)
+
+    const channel = supabase
+      .channel('drops-catalog-sync')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'drops' }, () => {
+        fetchDrops(false)
+      })
+      .subscribe()
+
+    const handleFocus = () => fetchDrops(false)
+    window.addEventListener('focus', handleFocus)
+
+    return () => {
+      clearInterval(clockInterval)
+      clearInterval(syncInterval)
+      window.removeEventListener('focus', handleFocus)
+      supabase.removeChannel(channel)
     }
-    fetchDrops()
   }, [])
 
   const handleStatusChange = (status: FilterStatus) => {

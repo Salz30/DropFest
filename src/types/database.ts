@@ -72,6 +72,13 @@ export type Database = {
         }
         Returns: Json
       }
+      cancel_pending_order: {
+        Args: {
+          p_order_id: string
+          p_email: string
+        }
+        Returns: Json
+      }
       submit_payment_proof: {
         Args: {
           p_order_id: string
@@ -108,6 +115,31 @@ export type Database = {
       }
       release_expired_slots: {
         Args: Record<string, never>
+        Returns: Json
+      }
+      sync_drop_statuses: {
+        Args: Record<string, never>
+        Returns: Json
+      }
+      delete_product: {
+        Args: { p_product_id: string }
+        Returns: Json
+      }
+      delete_drop: {
+        Args: { p_drop_id: string }
+        Returns: Json
+      }
+      manage_product: {
+        Args: {
+          p_action: string
+          p_brand_id: string
+          p_product_id?: string | null
+          p_name?: string | null
+          p_description?: string | null
+          p_price?: number | null
+          p_category?: string | null
+          p_image_url?: string | null
+        }
         Returns: Json
       }
     }

@@ -22,6 +22,16 @@ function formatRupiah(amount: number): string {
   return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(amount)
 }
 
+function formatPriceInput(amount: number): string {
+  if (!Number.isFinite(amount) || amount <= 0) return ''
+  return new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 }).format(amount)
+}
+
+function parsePriceInput(value: string): number {
+  const digits = value.replace(/[^0-9]/g, '')
+  return digits ? Number(digits) : 0
+}
+
 function formatDate(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString('id-ID', {
     day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
@@ -376,6 +386,10 @@ export default function DashboardPage() {
   const handleProductSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!brand) return
+    if (productForm.price < 1000) {
+      setProductMessage({ type: 'error', text: 'Harga produk minimal Rp 1.000.' })
+      return
+    }
     setIsSubmittingProduct(true)
     setProductMessage(null)
 
@@ -430,6 +444,11 @@ export default function DashboardPage() {
 
   const handleDeleteProduct = async (id: string) => {
     if (!brand) return
+    const linkedDrop = drops.find(drop => drop.product_id === id)
+    if (linkedDrop) {
+      alert(`Produk tidak dapat dihapus karena masih digunakan oleh drop "${linkedDrop.title}". Hapus drop tersebut terlebih dahulu.`)
+      return
+    }
     if (!window.confirm('Yakin ingin menghapus produk ini?')) return
     try {
       const { data: rpcRes, error: rpcErr } = await callRpc('manage_product', {
@@ -438,13 +457,29 @@ export default function DashboardPage() {
         p_product_id: id,
       })
 
-      if (rpcErr || (rpcRes && !(rpcRes as any).success)) {
-        const { error } = await supabase.from('products').delete().eq('id', id)
-        if (error) throw error
+      if (rpcErr) throw rpcErr
+      if (!rpcRes || typeof rpcRes !== 'object' || !(rpcRes as any).success) {
+        throw new Error((rpcRes as any)?.message || 'Produk gagal dihapus.')
       }
-      fetchDashboardData()
+
+      await fetchDashboardData()
     } catch (err: any) {
       alert(err.message || 'Gagal menghapus produk')
+    }
+  }
+
+  const handleDeleteDrop = async (drop: Drop) => {
+    if (!window.confirm(`Hapus drop "${drop.title}"? Drop hanya dapat dihapus bila belum memiliki pesanan.`)) return
+
+    try {
+      const { data, error } = await callRpc('delete_drop', { p_drop_id: drop.id })
+      if (error) throw error
+      if (!data || typeof data !== 'object' || !(data as { success?: boolean }).success) {
+        throw new Error((data as { message?: string } | null)?.message || 'Drop gagal dihapus.')
+      }
+      await fetchDashboardData()
+    } catch (err: any) {
+      alert(err.message || 'Gagal menghapus drop')
     }
   }
 
@@ -1142,6 +1177,9 @@ export default function DashboardPage() {
                       <button onClick={() => openEditDrop(d)} style={{ background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', fontSize: '12px', color: '#0369A1', fontWeight: 600 }}>
                         <Edit2 size={13} /> Edit
                       </button>
+                      <button onClick={() => handleDeleteDrop(d)} style={{ background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', fontSize: '12px', color: '#D32F2F', fontWeight: 600 }}>
+                        <Trash2 size={13} /> Hapus
+                      </button>
                       <Link to={`/drops/${d.id}`} target="_blank" style={{ fontSize: 12, color: '#29165E', fontWeight: 600, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4 }}>
                         Halaman Publik <ChevronRight size={13} />
                       </Link>
@@ -1332,13 +1370,20 @@ export default function DashboardPage() {
                 <div>
                   <label className="input-label">Harga (Rp) *</label>
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9.]*"
                     className="input-field"
                     required
-                    min={1000}
-                    value={productForm.price}
-                    onChange={e => setProductForm({ ...productForm, price: Number(e.target.value) })}
+                    placeholder="Contoh: 700.000"
+                    value={formatPriceInput(productForm.price)}
+                    onChange={e => setProductForm({ ...productForm, price: parsePriceInput(e.target.value) })}
+                    onFocus={e => e.currentTarget.select()}
+                    aria-describedby="product-price-help"
                   />
+                  <p id="product-price-help" style={{ fontSize: 11, color: '#666666', marginTop: 6, marginBottom: 0 }}>
+                    Gunakan angka saja; pemisah ribuan ditampilkan otomatis. Minimum Rp 1.000.
+                  </p>
                 </div>
                 <div>
                   <label className="input-label">Kategori</label>
